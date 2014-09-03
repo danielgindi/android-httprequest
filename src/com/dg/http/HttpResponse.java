@@ -400,7 +400,12 @@ public class HttpResponse
         if (contentLength >= 0 && contentLength <= MAX_SIZE_TO_ALLOW_IN_MEMORY)
         {
             memoryBuffer = new byte[(int)contentLength];
-            stream.read(memoryBuffer, 0, (int) contentLength);
+            int read, totalRead = 0, toRead = (int)contentLength;
+            while ((read = stream.read(memoryBuffer, totalRead, toRead)) > 0)
+            {
+                totalRead += read;
+                toRead -= read;
+            }
         }
         else
         {
@@ -431,7 +436,12 @@ public class HttpResponse
             else
             {
                 memoryBuffer = new byte[(int)contentLength];
-                stream.read(memoryBuffer, 0, (int) contentLength);
+                int read, totalRead = 0, toRead = (int)contentLength;
+                while ((read = stream.read(memoryBuffer, totalRead, toRead)) > 0)
+                {
+                    totalRead += read;
+                    toRead -= read;
+                }
             }
         }
 
