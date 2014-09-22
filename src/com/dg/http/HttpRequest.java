@@ -488,7 +488,7 @@ public class HttpRequest
 
     public HttpRequest setContentType(String contentType)
     {
-        return setContentType(HeaderscontentType, utf8Charset);
+        return setContentType(contentType, utf8Charset);
     }
 
     public HttpRequest setContentType(String contentType, String charset)
