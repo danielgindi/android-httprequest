@@ -1495,7 +1495,7 @@ public class HttpRequest
                     {
                         response = getResponse(progressListener, shouldAbortRequest);
                     }
-                    catch (IOException e)
+                    catch (Exception e)
                     {
                         if (asyncListener != null)
                         {
@@ -1512,7 +1512,7 @@ public class HttpRequest
                         {
                             response.prebuffer();
                         }
-                        catch (IOException e)
+                        catch (Exception e)
                         {
                             if (asyncListener != null)
                             {
@@ -2317,7 +2317,7 @@ public class HttpRequest
         /**
          * Called on the AsyncTask thread with any exception thrown during the request connection
          */
-        public void onRequestException(IOException ioException)
+        public void onRequestException(Exception exception)
         {
             // Do nothing. If you want printouts, override and print. By default we do not pollute the Logcat, and we do not expose app's data on the log.
         }
@@ -2325,7 +2325,7 @@ public class HttpRequest
         /**
          * Called on the AsyncTask thread with any exception thrown during the request connection
          */
-        public void onResponseException(IOException ioException)
+        public void onResponseException(Exception exception)
         {
             // Do nothing. If you want printouts, override and print. By default we do not pollute the Logcat, and we do not expose app's data on the log.
         }
