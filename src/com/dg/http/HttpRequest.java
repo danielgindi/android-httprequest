@@ -37,19 +37,24 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Field;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
+import java.net.ProtocolException;
 import java.net.Proxy;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
+import java.security.AccessController;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.security.SecureRandom;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
@@ -108,6 +113,8 @@ public class HttpRequest
     private boolean shouldTrustAllHttpsHosts = false;
     private long ifModifiedSince = 0;
 
+    private static boolean _triedFixingHttpURLConnectionMethods = false;
+
     private void initialize()
     {
         if (httpMethod.equals(HttpMethod.POST) || httpMethod.equals(HttpMethod.PUT))
@@ -117,6 +124,12 @@ public class HttpRequest
         else if (httpMethod.equals(HttpMethod.PATCH))
         {
             defaultContentType = ContentType.JSON;
+        }
+
+        if (!_triedFixingHttpURLConnectionMethods)
+        {
+            _triedFixingHttpURLConnectionMethods = true;
+            tryFixingHttpURLConnectionMethods();
         }
     }
 
@@ -1022,7 +1035,16 @@ public class HttpRequest
             connection = (HttpURLConnection) url.openConnection();
         }
 
-        connection.setRequestMethod(httpMethod);
+        try
+        {
+            connection.setRequestMethod(httpMethod);
+        }
+        catch (ProtocolException ex)
+        {
+            // HTTP Method not supported by HttpURLConnection which is only HTTP/1.1 compliant
+            trySetHttpMethodUsingIntrospection(connection, httpMethod);
+        }
+
         connection.setInstanceFollowRedirects(followRedirects);
         connection.setUseCaches(useCaches);
         if (readTimeout > -1)
@@ -2106,6 +2128,130 @@ public class HttpRequest
         return sb.toString();
     }
 
+    /**
+     * HttpURLConnection does not allow more than a few basic HTTP Methods, we need to workaround that.
+     * First we try to edit its internal list of supported HTTP methods, and as a fallback we try to directly set the "method" field using introspection
+     */
+    private static void tryFixingHttpURLConnectionMethods()
+    {
+        try
+        {
+            AccessController.doPrivileged(new PrivilegedExceptionAction<Object>()
+            {
+                @Override
+                public Object run() throws NoSuchFieldException, IllegalAccessException
+                {
+                    try
+                    {
+                        Class<?> connectionClass = HttpURLConnection.class;
+
+                        Field methodField = connectionClass.getDeclaredField("PERMITTED_USER_METHODS");
+                        methodField.setAccessible(true);
+                        String[] methodsArray = (String[])methodField.get(null);
+
+                        ArrayList<String> newSupportedMethods = new ArrayList<String>();
+                        for (String method : methodsArray)
+                        {
+                            newSupportedMethods.add(method);
+                        }
+                        if (!newSupportedMethods.contains("PATCH"))
+                        {
+                            newSupportedMethods.add("PATCH");
+                        }
+                        if (!newSupportedMethods.contains("CONNECT"))
+                        {
+                            newSupportedMethods.add("CONNECT");
+                        }
+
+                        methodsArray = newSupportedMethods.toArray(new String[newSupportedMethods.size()]);
+                        methodField.set(null, methodsArray);
+                    }
+                    catch (Exception ignored)
+                    {
+                    }
+                    return null;
+                }
+            });
+        }
+        catch (Exception ignored)
+        {
+        }
+    }
+
+    private static void trySetHttpMethodUsingIntrospection(final HttpURLConnection httpURLConnection, final String method)
+    {
+        try
+        {
+            AccessController.doPrivileged(new PrivilegedExceptionAction<Object>()
+            {
+                @Override
+                public Object run() throws NoSuchFieldException, IllegalAccessException
+                {
+                    try
+                    {
+                        httpURLConnection.setRequestMethod(method);
+                    }
+                    catch (final ProtocolException pe)
+                    {
+                        Class<?> connectionClass = httpURLConnection.getClass();
+                        try
+                        {
+                            Field delegateField = connectionClass.getDeclaredField("delegate");
+                            delegateField.setAccessible(true);
+                            HttpURLConnection delegateConnection = (HttpURLConnection) delegateField.get(httpURLConnection);
+                            trySetHttpMethodUsingIntrospection(delegateConnection, method);
+                        }
+                        catch (NoSuchFieldException ignored)
+                        {
+                        }
+                        catch (IllegalArgumentException e)
+                        {
+                            throw new RuntimeException(e);
+                        }
+                        catch (IllegalAccessException e)
+                        {
+                            throw new RuntimeException(e);
+                        }
+                        try
+                        {
+                            while (connectionClass != null)
+                            {
+                                try
+                                {
+                                    Field methodField = connectionClass.getDeclaredField("method");
+                                    methodField.setAccessible(true);
+                                    methodField.set(httpURLConnection, method);
+                                    break;
+                                }
+                                catch (NoSuchFieldException e)
+                                {
+                                    connectionClass = connectionClass.getSuperclass();
+                                }
+                            }
+                        }
+                        catch (final Exception e)
+                        {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                    return null;
+                }
+            });
+        }
+        catch (final PrivilegedActionException e)
+        {
+            final Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException)
+            {
+                throw (RuntimeException) cause;
+            }
+            else
+            {
+                throw new RuntimeException(cause);
+            }
+        }
+    }
+
     @Override
     public String toString()
     {
@@ -2371,8 +2517,6 @@ public class HttpRequest
         public static final String PUT = "PUT";
         public static final String HEAD = "HEAD";
         public static final String DELETE = "DELETE";
-
-        // These are not permitted by HttpURLConnection...
         public static final String PATCH = "PATCH";
         public static final String OPTIONS = "OPTIONS";
         public static final String CONNECT = "CONNECT";
