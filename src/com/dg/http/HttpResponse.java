@@ -331,6 +331,14 @@ public class HttpResponse
         }
     }
 
+    private boolean isCompressedStream(InputStream inputSream)
+    {
+        if (inputSream == null) return false;
+        if (inputSream instanceof GZIPInputStream) return true;
+        if (inputSream instanceof ProgressInputStream) return ((ProgressInputStream)inputSream).isCompressedStream();
+        return false;
+    }
+
     public String getResponseText() throws IOException
     {
         InputStreamReader reader = new InputStreamReader(getInputStream(), getCharset());
@@ -369,7 +377,7 @@ public class HttpResponse
         else
         {
             InputStream inputStream = getInputStream();
-            long contentLength = inputStream.isCompressedStream() ? -1L : getContentLength();
+            long contentLength = isCompressedStream(inputStream) ? -1L : getContentLength();
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream(contentLength >= 0 ? (int)contentLength : 64);
 
             byte[] buffer = new byte[BUFFER_SIZE];
@@ -399,7 +407,7 @@ public class HttpResponse
 
         InputStream stream = getInputStream(progressListener);
 
-        long contentLength = inputStream.isCompressedStream() ? -1L : getContentLength();
+        long contentLength = isCompressedStream(stream) ? -1L : getContentLength();
         if (contentLength >= 0L && contentLength <= MAX_SIZE_TO_ALLOW_IN_MEMORY)
         {
             memoryBuffer = new byte[(int)contentLength];
@@ -714,6 +722,11 @@ public class HttpResponse
             }
 
             return read;
+        }
+
+        public boolean isCompressedStream()
+        {
+            return inputStream != null && inputStream instanceof GZIPInputStream;
         }
     }
 }
