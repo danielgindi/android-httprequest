@@ -314,14 +314,17 @@ public class HttpResponse
                 }
             }
 
+            boolean isCompressedStream = false;
+            
             if (autoDecompress && "gzip".equals(getContentEncoding()))
             {
                 stream = new GZIPInputStream(stream);
+                isCompressedStream = true;
             }
 
             if (progressListener != null)
             {
-                stream = new ProgressInputStream(stream, progressListener, getContentLength());
+                stream = new ProgressInputStream(stream, progressListener, isCompressedStream ? -1L : getContentLength());
             }
 
             return stream;
@@ -366,7 +369,7 @@ public class HttpResponse
         else
         {
             InputStream inputStream = getInputStream();
-            long contentLength = getContentLength();
+            long contentLength = inputStream.isCompressedStream() ? -1L : getContentLength();
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream(contentLength >= 0 ? (int)contentLength : 64);
 
             byte[] buffer = new byte[BUFFER_SIZE];
@@ -396,8 +399,8 @@ public class HttpResponse
 
         InputStream stream = getInputStream(progressListener);
 
-        long contentLength = getContentLength();
-        if (contentLength >= 0 && contentLength <= MAX_SIZE_TO_ALLOW_IN_MEMORY)
+        long contentLength = inputStream.isCompressedStream() ? -1L : getContentLength();
+        if (contentLength >= 0L && contentLength <= MAX_SIZE_TO_ALLOW_IN_MEMORY)
         {
             memoryBuffer = new byte[(int)contentLength];
             int read, totalRead = 0, toRead = (int)contentLength;
@@ -412,12 +415,16 @@ public class HttpResponse
             fileBuffer = File.createTempFile("response-buffer", ".http", null);
             fileBuffer.deleteOnExit();
             FileOutputStream fileOutputStream = null;
+            
+            IOException thrownException = null;
+            
             try
             {
                 fileOutputStream = new FileOutputStream(fileBuffer);
             }
             catch (IOException e)
             {
+                thrownException = e;
                 fileBuffer.delete();
                 fileBuffer = null;
             }
@@ -435,12 +442,19 @@ public class HttpResponse
             }
             else
             {
-                memoryBuffer = new byte[(int)contentLength];
-                int read, totalRead = 0, toRead = (int)contentLength;
-                while ((read = stream.read(memoryBuffer, totalRead, toRead)) > 0)
+                if (contentLength >= 0L)
                 {
-                    totalRead += read;
-                    toRead -= read;
+                    memoryBuffer = new byte[(int)contentLength];
+                    int read, totalRead = 0, toRead = (int)contentLength;
+                    while ((read = stream.read(memoryBuffer, totalRead, toRead)) > 0)
+                    {
+                        totalRead += read;
+                        toRead -= read;
+                    }
+                }
+                else
+                {
+                    throw thrownException;
                 }
             }
         }
