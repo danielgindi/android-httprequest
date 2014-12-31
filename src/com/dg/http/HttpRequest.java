@@ -31,7 +31,6 @@ import android.os.AsyncTask;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -50,13 +49,10 @@ import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.security.AccessController;
 import java.security.KeyManagementException;
-import java.security.KeyStore;
-import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.security.SecureRandom;
-import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
@@ -69,7 +65,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocketFactory;
@@ -878,80 +873,48 @@ public class HttpRequest
     private static final ThreadLocal<SSLSocketFactory> trustAllSslFactorySynchronized = new ThreadLocal<SSLSocketFactory>();
     private static SSLSocketFactory getTrustAllSSLFactory()
     {
-        final TrustManager[] trustAllCerts = new TrustManager[]{new X509TrustManager()
+        SSLSocketFactory factory = trustAllSslFactorySynchronized.get();
+
+        if (factory == null)
         {
-            public X509Certificate[] getAcceptedIssuers()
+            X509TrustManager trustManager = new X509TrustManager()
             {
-                return new X509Certificate[0];
-            }
+                @Override
+                public X509Certificate[] getAcceptedIssuers()
+                {
+                    return null;
+                }
 
-            public void checkClientTrusted(X509Certificate[] chain, String authType)
+                @Override
+                public void checkClientTrusted(X509Certificate[] arg0, String arg1) throws CertificateException
+                { /* Not implemented */ }
+
+                @Override
+                public void checkServerTrusted(X509Certificate[] arg0, String arg1) throws CertificateException
+                { /* Not implemented */ }
+            };
+
+            TrustManager[] trustAllCerts = new TrustManager[]{trustManager};
+
+            try
             {
-                // No check, we trust them all
-            }
+                SSLContext sc = SSLContext.getInstance("TLS");
 
-            public void checkServerTrusted(X509Certificate[] chain, String authType)
+                sc.init(null, trustAllCerts, new SecureRandom());
+
+                trustAllSslFactorySynchronized.set(factory = sc.getSocketFactory());
+            }
+            catch (NoSuchAlgorithmException e)
             {
-                // No check, we trust them all
+                e.printStackTrace();
             }
-        }};
-
-        KeyManagerFactory keyManagerFactory = null;
-        try
-        {
-            keyManagerFactory = getDefaultKeyStoreManager();
-            SSLContext context = SSLContext.getInstance("TLS");
-            context.init(keyManagerFactory.getKeyManagers(), trustAllCerts, new SecureRandom());
-            trustAllSslFactorySynchronized.set(context.getSocketFactory());
-        }
-        catch (NoSuchAlgorithmException e)
-        {
-            e.printStackTrace();
-        }
-        catch (KeyStoreException e)
-        {
-            e.printStackTrace();
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
-        }
-        catch (CertificateException e)
-        {
-            e.printStackTrace();
-        }
-        catch (UnrecoverableKeyException e)
-        {
-            e.printStackTrace();
-        }
-        catch (KeyManagementException e)
-        {
-            e.printStackTrace();
+            catch (KeyManagementException e)
+            {
+                e.printStackTrace();
+            }
         }
 
-        return trustAllSslFactorySynchronized.get();
-    }
-
-    public static final String SSL_KEY_STORE = System.getProperty("javax.net.ssl.keyStore");
-    public static final String SSL_KEY_STORE_PASSWORD = System.getProperty("javax.net.ssl.keyStorePassword");
-    public static final String SSL_KEY_STORE_TYPE = System.getProperty("javax.net.ssl.keyStoreType");
-
-    private static KeyManagerFactory getDefaultKeyStoreManager() throws NoSuchAlgorithmException, KeyStoreException, IOException, CertificateException, UnrecoverableKeyException
-    {
-        if (SSL_KEY_STORE == null || SSL_KEY_STORE_PASSWORD == null || SSL_KEY_STORE_TYPE == null) return null;
-
-        KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance("SunX509");
-        KeyStore keyStore = KeyStore.getInstance(SSL_KEY_STORE_TYPE);
-
-        InputStream keyInput = HttpRequest.class.getResourceAsStream(SSL_KEY_STORE);
-        keyStore.load(keyInput, SSL_KEY_STORE_PASSWORD.toCharArray());
-
-        if (null == keyInput) throw new FileNotFoundException();
-
-        keyInput.close();
-        keyManagerFactory.init(keyStore, SSL_KEY_STORE_PASSWORD.toCharArray());
-
-        return keyManagerFactory;
+        return factory;
     }
 
     /**
