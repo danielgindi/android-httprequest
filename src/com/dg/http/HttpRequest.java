@@ -106,6 +106,7 @@ public class HttpRequest
     private boolean useCaches = true;
     private boolean shouldTrustAllHttpsCertificates = false;
     private boolean shouldTrustAllHttpsHosts = false;
+    private SSLSocketFactory customSSLSocketFactory = null;
     private long ifModifiedSince = 0;
 
     private static boolean _triedFixingHttpURLConnectionMethods = false;
@@ -613,6 +614,17 @@ public class HttpRequest
         return this;
     }
 
+    public SSLSocketFactory getCustomSSLSocketFactory()
+    {
+        return customSSLSocketFactory;
+    }
+
+    public HttpRequest setCustomSSLSocketFactory(SSLSocketFactory customSSLSocketFactory)
+    {
+        this.customSSLSocketFactory = customSSLSocketFactory;
+        return this;
+    }
+
     public int getReadTimeout()
     {
         return readTimeout;
@@ -1045,6 +1057,13 @@ public class HttpRequest
                         return true;
                     }
                 });
+            }
+        }
+        if (customSSLSocketFactory != null)
+        {
+            if (connection instanceof HttpsURLConnection)
+            {
+                ((HttpsURLConnection) connection).setSSLSocketFactory(customSSLSocketFactory);
             }
         }
 
