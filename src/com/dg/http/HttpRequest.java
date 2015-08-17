@@ -1477,10 +1477,11 @@ public class HttpRequest
 
     public HttpAsyncTask getResponseAsync(final AsyncHttpRequestResponseListener asyncListener, final Executor taskExecutor, final ProgressListener progressListener)
     {
+        final private AtomicBoolean shouldAbortRequest = new AtomicBoolean(false);
+        
         HttpAsyncTask task = new HttpAsyncTask<Object, Void, HttpResponse>()
         {
             private HttpResponse response = null;
-            private AtomicBoolean shouldAbortRequest = new AtomicBoolean(false);
 
             @Override
             protected HttpResponse doInBackground(Object... params)
