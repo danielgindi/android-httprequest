@@ -1,5 +1,5 @@
-java-httprequest
-================
+HttpRequest
+===========
 
 A Java based HttpRequest/Response library. 
 This is currently only tested on the Android platform, but should work generally on any Java platform.
@@ -29,6 +29,18 @@ Features:
 I strongly encourage getting involved in this project to make it better!
 
 Have fun and a good luck with your projects!
+
+## Dependency
+
+[Download from Maven Central (.aar)](https://oss.sonatype.org/index.html#view-repositories;releases~browsestorage~/com/github/danielgindi/httprequest/1.0.0/httprequest-1.0.0.aar)
+
+**or**
+
+```java
+	dependencies {
+    	compile 'com.github.danielgindi:httprequest:1.0.0'
+	}
+```
 
 ## License
 
