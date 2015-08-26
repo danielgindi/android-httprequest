@@ -27,6 +27,7 @@ package com.dg.http;
 
 import android.graphics.Bitmap;
 import android.os.AsyncTask;
+import android.os.Build;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -1553,7 +1554,7 @@ public class HttpRequest
             }
         };
 
-        if (taskExecutor != null)
+        if (taskExecutor != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB)
         {
             task.executeOnExecutor(taskExecutor);
         }
