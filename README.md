@@ -21,6 +21,9 @@ Features:
 * Many helper functions to do stuff with the request and response.
 * Taking params with many types
 * Encoding Bitmap params
+* Adding files as parts without loading them to memory
+* Tracking progress of both request and response
+* Option to execute on a specific executor to prevent blocking the single Async thread
 * The `HttpResponse` class to wrap the response
 * `HttpResponse` will take care of caching the response to disk first if you work with `getResponseAsync` (or call `prebuffer()`)
 * The connection is abortable at any stage of request of response
@@ -29,6 +32,10 @@ Features:
 I strongly encourage getting involved in this project to make it better!
 
 Have fun and a good luck with your projects!
+
+## Usage sample
+
+TODO: :-)
 
 ## Dependency
 
