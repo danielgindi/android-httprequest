@@ -39,13 +39,13 @@ TODO: :-)
 
 ## Dependency
 
-[Download from Maven Central (.aar)](https://oss.sonatype.org/index.html#view-repositories;releases~browsestorage~/com/github/danielgindi/httprequest/1.0.0/httprequest-1.0.0.aar)
+[Download from Maven Central (.aar)](https://oss.sonatype.org/index.html#view-repositories;releases~browsestorage~/com/github/danielgindi/httprequest/1.1.1/httprequest-1.1.1.aar)
 
 **or**
 
 ```java
 	dependencies {
-    	compile 'com.github.danielgindi:httprequest:1.0.0'
+    	compile 'com.github.danielgindi:httprequest:1.1.1'
 	}
 ```
 
