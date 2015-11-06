@@ -1297,6 +1297,19 @@ public class HttpRequest
                     ByteBuffer buffer = charset.encode(CharBuffer.wrap(requestBody.toString()));
                     contentLength = buffer.limit();
 
+                    if (contentLength > ESTIMATED_SIZE_TO_ALLOW_IN_MEMORY)
+                    {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT)
+                        {
+                            connection.setFixedLengthStreamingMode(contentLength);
+                        }
+                        else if (contentLength <= 0x7FF89EC0)
+                        {
+                            // Android SDK < 19: 2 GiB limit
+                            connection.setFixedLengthStreamingMode((int)contentLength);
+                        }
+                    }
+
                     if (progressListener != null)
                     {
                         progressListener.onRequestProgress(0L, contentLength);
@@ -1321,6 +1334,19 @@ public class HttpRequest
 
             if (!wasRequestHandled && contentLength > -1)
             {
+                if (contentLength > ESTIMATED_SIZE_TO_ALLOW_IN_MEMORY)
+                {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT)
+                    {
+                        connection.setFixedLengthStreamingMode(contentLength);
+                    }
+                    else if (contentLength <= 0x7FF89EC0)
+                    {
+                        // Android SDK < 19: 2 GiB limit
+                        connection.setFixedLengthStreamingMode((int)contentLength);
+                    }
+                }
+
                 if (progressListener != null)
                 {
                     progressListener.onRequestProgress(0L, contentLength);
@@ -1406,6 +1432,19 @@ public class HttpRequest
                     }
 
                     long contentLength = tempFile.length();
+
+                    if (contentLength > ESTIMATED_SIZE_TO_ALLOW_IN_MEMORY)
+                    {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT)
+                        {
+                            connection.setFixedLengthStreamingMode(contentLength);
+                        }
+                        else if (contentLength <= 0x7FF89EC0)
+                        {
+                            // Android SDK < 19: 2 GiB limit
+                            connection.setFixedLengthStreamingMode((int)contentLength);
+                        }
+                    }
 
                     if (progressListener != null)
                     {
