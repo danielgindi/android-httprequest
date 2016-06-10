@@ -54,84 +54,83 @@ public class HttpResponse
     private static final int MAX_SIZE_TO_ALLOW_IN_MEMORY = 8192; // When we do not know the Content-Length in advance, we build the request in memory, or in file if it's too big or unknown.
     private static final int BUFFER_SIZE = 4096;
 
-    private boolean autoDecompress = true;
-    private boolean isBuffered = false;
-    private byte[] memoryBuffer = null;
-    private File fileBuffer = null;
+    private boolean mAutoDecompress = true;
+    private boolean mIsBuffered = false;
+    private byte[] mMemoryBuffer = null;
+    private File mFileBuffer = null;
 
-    private HttpURLConnection connection;
-    private int statusCode;
-    private String statusMessage;
-    private Map<String, List<String>> headers;
-    private static final String[] EMPTY_STRING_ARRAY = new String[]{ };
-    private String originalCharset;
-    private Charset charset;
-    private URL url;
+    private HttpURLConnection mConnection;
+    private int mStatusCode;
+    private String mStatusMessage;
+    private Map<String, List<String>> mHeaders;
+    private String mOriginalCharset;
+    private Charset mCharset;
+    private URL mUrl;
 
     public HttpResponse(HttpURLConnection connection) throws IOException
     {
-        this.connection = connection;
-        this.autoDecompress = true;
+        this.mConnection = connection;
+        this.mAutoDecompress = true;
         readHeaders();
     }
 
     public HttpResponse(HttpURLConnection connection, boolean autoDecompress) throws IOException
     {
-        this.connection = connection;
-        this.autoDecompress = autoDecompress;
+        this.mConnection = connection;
+        this.mAutoDecompress = autoDecompress;
         readHeaders();
     }
 
     private void readHeaders() throws IOException
     {
-        statusCode = this.connection.getResponseCode();
-        statusMessage = this.connection.getResponseMessage();
-        headers = this.connection.getHeaderFields();
-        originalCharset = getHeaderParameter(Headers.CONTENT_TYPE, "charset");
-        if (originalCharset != null && originalCharset.length() > 0)
+        mStatusCode = this.mConnection.getResponseCode();
+        mStatusMessage = this.mConnection.getResponseMessage();
+        mHeaders = this.mConnection.getHeaderFields();
+        mOriginalCharset = getHeaderParameter(Headers.CONTENT_TYPE, "charset");
+        if (mOriginalCharset != null && mOriginalCharset.length() > 0)
         {
-            charset = Charset.forName(originalCharset);
+            mCharset = Charset.forName(mOriginalCharset);
         }
         else
         {
-            charset = utf8Charset;
+            mCharset = utf8Charset;
         }
-        url = this.connection.getURL();
+        mUrl = this.mConnection.getURL();
     }
 
     public int getStatusCode()
     {
-        return statusCode;
+        return mStatusCode;
     }
 
     public String getStatusMessage()
     {
-        return statusMessage;
+        return mStatusMessage;
     }
 
     public URL getURL()
     {
-        return url;
+        return mUrl;
     }
 
     public Map<String, List<String>> getHeaders()
     {
-        return headers;
+        return mHeaders;
     }
 
     public String[] getHeaders(final String name)
     {
-        List<String> list = headers.get(name);
+        List<String> list = mHeaders.get(name);
         if (list != null)
         {
             return list.toArray(new String[list.size()]);
         }
-        return EMPTY_STRING_ARRAY;
+        return new String[]{ };
     }
 
     public String getHeader(final String name)
     {
-        List<String> list = headers.get(name);
+        List<String> list = mHeaders.get(name);
         if (list != null)
         {
             return list.isEmpty() ? null : list.get(0);
@@ -191,12 +190,12 @@ public class HttpResponse
 
     public boolean isSuccessful()
     {
-        return statusCode == StatusCodes.OK ||
-                statusCode == StatusCodes.CREATED ||
-                statusCode == StatusCodes.NO_CONTENT ||
-                statusCode == StatusCodes.NON_AUTHORITATIVE_INFORMATION ||
-                statusCode == StatusCodes.RESET_CONTENT ||
-                statusCode == StatusCodes.PARTIAL_CONTENT;
+        return mStatusCode == StatusCodes.OK ||
+                mStatusCode == StatusCodes.CREATED ||
+                mStatusCode == StatusCodes.NO_CONTENT ||
+                mStatusCode == StatusCodes.NON_AUTHORITATIVE_INFORMATION ||
+                mStatusCode == StatusCodes.RESET_CONTENT ||
+                mStatusCode == StatusCodes.PARTIAL_CONTENT;
     }
 
     public String getContentType()
@@ -256,12 +255,12 @@ public class HttpResponse
 
     public String getOriginalCharset()
     {
-        return originalCharset;
+        return mOriginalCharset;
     }
 
     public Charset getCharset()
     {
-        return charset;
+        return mCharset;
     }
 
     public InputStream getInputStream() throws IOException
@@ -271,33 +270,33 @@ public class HttpResponse
 
     public InputStream getInputStream(HttpRequest.ProgressListener progressListener) throws IOException
     {
-        if (isBuffered)
+        if (mIsBuffered)
         {
-            if (memoryBuffer != null)
+            if (mMemoryBuffer != null)
             {
-                return new ByteArrayInputStream(memoryBuffer);
+                return new ByteArrayInputStream(mMemoryBuffer);
             }
-            else if (fileBuffer != null)
+            else if (mFileBuffer != null)
             {
-                return new FileInputStream(fileBuffer);
+                return new FileInputStream(mFileBuffer);
             }
             return new ByteArrayInputStream(new byte[0]);
         }
         else
         {
             InputStream stream;
-            if (statusCode < 400)
+            if (mStatusCode < 400)
             {
-                stream = connection.getInputStream();
+                stream = mConnection.getInputStream();
             }
             else
             {
-                stream = connection.getErrorStream();
+                stream = mConnection.getErrorStream();
                 if (stream == null)
                 {
                     try
                     {
-                        stream = connection.getInputStream();
+                        stream = mConnection.getInputStream();
                     }
                     catch (IOException e)
                     {
@@ -316,7 +315,7 @@ public class HttpResponse
 
             boolean isCompressedStream = false;
             
-            if (autoDecompress && "gzip".equals(getContentEncoding()))
+            if (mAutoDecompress && "gzip".equals(getContentEncoding()))
             {
                 stream = new GZIPInputStream(stream);
                 isCompressedStream = true;
@@ -370,9 +369,9 @@ public class HttpResponse
 
     public byte[] getResponseBytes() throws IOException
     {
-        if (isBuffered && memoryBuffer != null)
+        if (mIsBuffered && mMemoryBuffer != null)
         {
-            return memoryBuffer;
+            return mMemoryBuffer;
         }
         else
         {
@@ -403,16 +402,16 @@ public class HttpResponse
 
     public void prebuffer(HttpRequest.ProgressListener progressListener) throws IOException
     {
-        if (isBuffered) return;
+        if (mIsBuffered) return;
 
         InputStream stream = getInputStream(progressListener);
 
         long contentLength = isCompressedStream(stream) ? -1L : getContentLength();
         if (contentLength >= 0L && contentLength <= MAX_SIZE_TO_ALLOW_IN_MEMORY)
         {
-            memoryBuffer = new byte[(int)contentLength];
+            mMemoryBuffer = new byte[(int)contentLength];
             int read, totalRead = 0, toRead = (int)contentLength;
-            while ((read = stream.read(memoryBuffer, totalRead, toRead)) > 0)
+            while ((read = stream.read(mMemoryBuffer, totalRead, toRead)) > 0)
             {
                 totalRead += read;
                 toRead -= read;
@@ -420,21 +419,21 @@ public class HttpResponse
         }
         else
         {
-            fileBuffer = File.createTempFile("response-buffer", ".http", null);
-            fileBuffer.deleteOnExit();
+            mFileBuffer = File.createTempFile("response-buffer", ".http", null);
+            mFileBuffer.deleteOnExit();
             FileOutputStream fileOutputStream = null;
             
             IOException thrownException = null;
             
             try
             {
-                fileOutputStream = new FileOutputStream(fileBuffer);
+                fileOutputStream = new FileOutputStream(mFileBuffer);
             }
             catch (IOException e)
             {
                 thrownException = e;
-                fileBuffer.delete();
-                fileBuffer = null;
+                mFileBuffer.delete();
+                mFileBuffer = null;
             }
 
             if (fileOutputStream != null)
@@ -452,9 +451,9 @@ public class HttpResponse
             {
                 if (contentLength >= 0L)
                 {
-                    memoryBuffer = new byte[(int)contentLength];
+                    mMemoryBuffer = new byte[(int)contentLength];
                     int read, totalRead = 0, toRead = (int)contentLength;
-                    while ((read = stream.read(memoryBuffer, totalRead, toRead)) > 0)
+                    while ((read = stream.read(mMemoryBuffer, totalRead, toRead)) > 0)
                     {
                         totalRead += read;
                         toRead -= read;
@@ -470,31 +469,31 @@ public class HttpResponse
         stream.close();
         disconnect();
 
-        isBuffered = true;
+        mIsBuffered = true;
     }
 
     public void disconnect()
     {
-        if (connection != null)
+        if (mConnection != null)
         {
             try
             {
-                connection.disconnect();
+                mConnection.disconnect();
             }
             catch (Exception ignored)
             {
 
             }
-            connection = null;
+            mConnection = null;
         }
     }
 
     protected void finalize ()
     {
-        if (fileBuffer != null)
+        if (mFileBuffer != null)
         {
-            fileBuffer.delete();
-            fileBuffer = null;
+            mFileBuffer.delete();
+            mFileBuffer = null;
         }
     }
 

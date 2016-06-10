@@ -60,7 +60,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -74,9 +73,10 @@ import javax.net.ssl.X509TrustManager;
 
 import static java.net.Proxy.Type.HTTP;
 
+@SuppressWarnings("unused")
 public class HttpRequest
 {
-    private static final Charset utf8Charset = Charset.forName("UTF8");
+    private static final Charset UTF8_CHARSET = Charset.forName("UTF8");
     private static final byte[] CRLF_BYTES = {'\r', '\n'};
     private static final byte[] URL_SEPARATOR_BYTES = {'&'};
     private static final int BUFFER_SIZE = 4096;
@@ -84,97 +84,110 @@ public class HttpRequest
     private static final String[] EMPTY_STRING_ARRAY = new String[]{ };
     private static final Object[] EMPTY_OBJECT_ARRAY = new Object[]{ };
 
-    private URL url;
-    private String httpMethod;
-    private Map<String, ArrayList<Object>> params = new HashMap<String, ArrayList<Object>>();
-    private Map<String, ArrayList<String>> headers = new HashMap<String, ArrayList<String>>();
-    private Map<String, ArrayList<DynamicPart>> multipartParts = new HashMap<String, ArrayList<DynamicPart>>();
-    private Object requestBody = null;
-    private long requestBodyLengthHint = -1; // Used for InputStream only
-    private String defaultContentType;
-    private String httpProxyHost;
-    private int httpProxyPort;
-    private int readTimeout = 0;
-    private int connectTimeout = 0;
+    private URL mUrl;
+    private String mHttpMethod;
+    private Map<String, ArrayList<Object>> mParams = new HashMap<>();
+    private Map<String, ArrayList<String>> mHeaders = new HashMap<>();
+    private Map<String, ArrayList<MultipartBuilder.DynamicPart>> mMultipartParts = new HashMap<>();
+    private Object mRequestBody = null;
+    private long mRequestBodyLengthHint = -1; // Used for InputStream only
+    private String mDefaultContentType;
+    private String mHttpProxyHost;
+    private int mHttpProxyPort;
+    private int mReadTimeout = 0;
+    private int mConnectTimeout = 0;
 
-    private static int defaultJpegCompressionQuality = 90;
-    private int jpegCompressionQuality = 0;
-    private boolean autoRecycleBitmaps = false;
+    private MultipartBuilder.Settings mSettings = new MultipartBuilder.Settings();
 
-    private boolean followRedirects = true;
-    private int chunkedStreamingModeSize = -1;
-    private boolean autoDecompress = true;
-    private boolean useCaches = true;
-    private boolean shouldTrustAllHttpsCertificates = false;
-    private boolean shouldTrustAllHttpsHosts = false;
-    private SSLSocketFactory customSSLSocketFactory = null;
-    private long ifModifiedSince = 0;
+    private boolean mFollowRedirects = true;
+    private int mChunkedStreamingModeSize = -1;
+    private boolean mAutoDecompress = true;
+    private boolean mUseCaches = true;
+    private boolean mShouldTrustAllHttpsCertificates = false;
+    private boolean mShouldTrustAllHttpsHosts = false;
+    private SSLSocketFactory mCustomSSLSocketFactory = null;
+    private long mIfModifiedSince = 0;
 
-    private static boolean _triedFixingHttpURLConnectionMethods = false;
+    private static boolean mTriedFixingHttpURLConnectionMethods = false;
 
     private void initialize()
     {
-        if (httpMethod.equals(HttpMethod.POST) || httpMethod.equals(HttpMethod.PUT))
+        if (mHttpMethod.equals(HttpMethod.POST) || mHttpMethod.equals(HttpMethod.PUT))
         {
-            defaultContentType = ContentType.FORM_URL_ENCODED;
+            mDefaultContentType = ContentType.FORM_URL_ENCODED;
         }
-        else if (httpMethod.equals(HttpMethod.PATCH))
+        else if (mHttpMethod.equals(HttpMethod.PATCH))
         {
-            defaultContentType = ContentType.JSON;
+            mDefaultContentType = ContentType.JSON;
         }
 
-        if (!_triedFixingHttpURLConnectionMethods)
+        if (!mTriedFixingHttpURLConnectionMethods)
         {
-            _triedFixingHttpURLConnectionMethods = true;
+            mTriedFixingHttpURLConnectionMethods = true;
             tryFixingHttpURLConnectionMethods();
         }
     }
 
     public HttpRequest(final CharSequence url, final String httpMethod) throws MalformedURLException
     {
-        this.url = new URL(url.toString());
-        this.httpMethod = httpMethod;
+        this.mUrl = new URL(url.toString());
+        this.mHttpMethod = httpMethod;
         initialize();
     }
 
     public HttpRequest(final URL url, final String httpMethod) throws MalformedURLException
     {
-        this.url = url;
-        this.httpMethod = httpMethod;
+        this.mUrl = url;
+        this.mHttpMethod = httpMethod;
         initialize();
     }
 
     public URL getURL()
     {
-        return url;
+        return mUrl;
     }
 
     public HttpRequest setURL(URL url)
     {
-        this.url = url;
+        this.mUrl = url;
         return this;
     }
 
     public String getHttpMethod()
     {
-        return httpMethod;
+        return mHttpMethod;
     }
 
     public HttpRequest setHttpMethod(String httpMethod)
     {
-        this.httpMethod = httpMethod;
+        this.mHttpMethod = httpMethod;
         return this;
     }
 
     public HttpRequest clearParams()
     {
-        this.params = new HashMap<String, ArrayList<Object>>();
+        this.mParams = new HashMap<>();
         return this;
     }
 
     public HttpRequest setParams(final Map<?, ?> params)
     {
-        this.params = new HashMap<String, ArrayList<Object>>();
+        this.mParams = new HashMap<>();
+        return addParams(params);
+    }
+
+    public HttpRequest setParams(final Object... params)
+    {
+        this.mParams = new HashMap<>();
+        for (int i = 0; i < params.length; i += 2)
+        {
+            addParam(params[i].toString(), params.length > i + 1 ? params[i + 1] : null);
+        }
+        return this;
+    }
+
+    public HttpRequest addParams(final Map<?, ?> params)
+    {
         if (params != null)
         {
             for (HashMap.Entry<?, ?> entry : params.entrySet())
@@ -185,73 +198,63 @@ public class HttpRequest
         return this;
     }
 
-    public HttpRequest setParams(final Object... params)
-    {
-        this.params = new HashMap<String, ArrayList<Object>>();
-        for (int i = 0; i < params.length; i += 2)
-        {
-            addParam(params[i].toString(), params.length > i + 1 ? params[i + 1] : null);
-        }
-        return this;
-    }
-
     public HttpRequest addParam(final String key, final Object value)
     {
-        if (this.params.containsKey(key))
+        if (this.mParams.containsKey(key))
         {
-            ArrayList<Object> values = this.params.get(key);
+            ArrayList<Object> values = this.mParams.get(key);
             values.add(value);
         }
         else
         {
             ArrayList<Object> values = new ArrayList<Object>();
             values.add(value);
-            this.params.put(key, values);
+            this.mParams.put(key, values);
         }
         return this;
     }
 
     public HttpRequest setParam(final String key, final Object value)
     {
-        ArrayList<Object> values = new ArrayList<Object>();
+        ArrayList<Object> values = new ArrayList<>();
         values.add(value);
-        this.params.put(key, values);
+        this.mParams.put(key, values);
         return this;
     }
 
     public Object getParam(final String key)
     {
-        if (this.params.containsKey(key))
+        if (this.mParams.containsKey(key))
         {
-            return this.params.get(key).get(0);
+            return this.mParams.get(key).get(0);
         }
         return null;
     }
 
     public Object[] getParams(final String key)
     {
-        if (this.params.containsKey(key))
+        if (this.mParams.containsKey(key))
         {
-            return this.params.get(key).toArray();
+            return this.mParams.get(key).toArray();
         }
         return EMPTY_OBJECT_ARRAY;
     }
 
     public HttpRequest removeParam(final String key)
     {
-        this.params.remove(key);
+        this.mParams.remove(key);
         return this;
     }
 
     public HttpRequest cleartHeaders()
     {
-        this.headers = new HashMap<String, ArrayList<String>>();
+        this.mHeaders = new HashMap<>();
         return this;
     }
 
     public HttpRequest setHeaders(final Map<?, ?> headers)
     {
-        this.headers = new HashMap<String, ArrayList<String>>();
+        this.mHeaders = new HashMap<>();
         if (headers != null)
         {
             for (HashMap.Entry<?, ?> entry : headers.entrySet())
@@ -264,7 +267,7 @@ public class HttpRequest
 
     public HttpRequest setHeaders(final Object... headers)
     {
-        this.headers = new HashMap<String, ArrayList<String>>();
+        this.mHeaders = new HashMap<>();
         for (int i = 0; i < headers.length; i += 2)
         {
             addHeader(headers[i].toString(), headers.length > i + 1 ? headers[i + 1] : null);
@@ -274,42 +277,42 @@ public class HttpRequest
 
     public HttpRequest addHeader(final String key, final Object value)
     {
-        if (this.headers.containsKey(key))
+        if (this.mHeaders.containsKey(key))
         {
-            ArrayList<String> values = this.headers.get(key);
+            ArrayList<String> values = this.mHeaders.get(key);
             values.add(value.toString());
         }
         else
         {
-            ArrayList<String> values = new ArrayList<String>();
+            ArrayList<String> values = new ArrayList<>();
             values.add(value.toString());
-            this.headers.put(key, values);
+            this.mHeaders.put(key, values);
         }
         return this;
     }
 
     public HttpRequest setHeader(final String key, final Object value)
     {
-        ArrayList<String> values = new ArrayList<String>();
+        ArrayList<String> values = new ArrayList<>();
         values.add(value.toString());
-        this.headers.put(key, values);
+        this.mHeaders.put(key, values);
         return this;
     }
 
     public String getHeader(final String key)
     {
-        if (this.headers.containsKey(key))
+        if (this.mHeaders.containsKey(key))
         {
-            return this.headers.get(key).get(0);
+            return this.mHeaders.get(key).get(0);
         }
         return null;
     }
 
     public String[] getHeaders(final String key)
     {
-        if (this.headers.containsKey(key))
+        if (this.mHeaders.containsKey(key))
         {
-            ArrayList<String> array = this.headers.get(key);
+            ArrayList<String> array = this.mHeaders.get(key);
             return array.toArray(new String[array.size()]);
         }
         return EMPTY_STRING_ARRAY;
@@ -317,13 +320,13 @@ public class HttpRequest
 
     public HttpRequest removeHeader(final String key)
     {
-        this.headers.remove(key);
+        this.mHeaders.remove(key);
         return this;
     }
 
     public HttpRequest removeAllParts()
     {
-        this.multipartParts = new HashMap<String, ArrayList<DynamicPart>>();
+        this.mMultipartParts = new HashMap<>();
         return this;
     }
 
@@ -332,9 +335,9 @@ public class HttpRequest
         return addPart(name, data, null, null, -1, charset);
     }
 
-    public void addPart(String name, Object data, String contentType, long contentLength)
+    public HttpRequest addPart(String name, Object data, String contentType, long contentLength)
     {
-        addPart(name, data, null, contentType, contentLength, null);
+        return addPart(name, data, null, contentType, contentLength, null);
     }
 
     public HttpRequest addPart(String name, Object data, String contentType, long contentLength, Charset charset)
@@ -359,33 +362,30 @@ public class HttpRequest
 
     public HttpRequest addPart(String name, Object data, String fileName, String contentType, long contentLength, Charset charset)
     {
-        Part part = new Part();
-        part.fileName = fileName;
-        if (data instanceof byte[] || data instanceof InputStream || data instanceof ByteBuffer || data instanceof File || data instanceof Bitmap)
-        {
-            part.contentType = ContentType.OCTET_STREAM;
-        }
-        part.contentLength = contentLength;
-        part.charset = charset;
-        part.data = data;
+        MultipartBuilder.Part part = new MultipartBuilder.Part(
+                data,
+                fileName,
+                contentType,
+                contentLength,
+                charset);
 
         return addPart(name, part);
     }
 
-    public HttpRequest addPart(String name, DynamicPart part)
+    public HttpRequest addPart(String name, MultipartBuilder.DynamicPart part)
     {
         if (part != null)
         {
-            if (this.multipartParts.containsKey(name))
+            if (this.mMultipartParts.containsKey(name))
             {
-                ArrayList<DynamicPart> values = this.multipartParts.get(name);
+                ArrayList<MultipartBuilder.DynamicPart> values = this.mMultipartParts.get(name);
                 values.add(part);
             }
             else
             {
-                ArrayList<DynamicPart> values = new ArrayList<DynamicPart>();
+                ArrayList<MultipartBuilder.DynamicPart> values = new ArrayList<>();
                 values.add(part);
-                this.multipartParts.put(name, values);
+                this.mMultipartParts.put(name, values);
             }
         }
         return this;
@@ -447,19 +447,19 @@ public class HttpRequest
 
     public HttpRequest setIfModifiedSince(long ifModifiedSince)
     {
-        this.ifModifiedSince = ifModifiedSince;
+        this.mIfModifiedSince = ifModifiedSince;
         return this;
     }
 
     public long getIfModifiedSince()
     {
-        return this.ifModifiedSince;
+        return this.mIfModifiedSince;
     }
 
     public HttpRequest setRequestBody(String requestBody)
     {
-        this.requestBody = requestBody;
-        requestBodyLengthHint = -1;
+        this.mRequestBody = requestBody;
+        mRequestBodyLengthHint = -1;
         return this;
     }
 
@@ -470,35 +470,35 @@ public class HttpRequest
 
     public HttpRequest setRequestBody(InputStream inputStream, long streamLength) throws IOException
     {
-        this.requestBody = inputStream;
-        this.requestBodyLengthHint = streamLength;
+        this.mRequestBody = inputStream;
+        this.mRequestBodyLengthHint = streamLength;
         return this;
     }
 
     public HttpRequest setRequestBody(File inputFile)
     {
-        this.requestBody = inputFile;
-        this.requestBodyLengthHint = -1;
+        this.mRequestBody = inputFile;
+        this.mRequestBodyLengthHint = -1;
         return this;
     }
 
     public HttpRequest setRequestBody(ByteBuffer byteBuffer)
     {
-        this.requestBody = byteBuffer;
-        this.requestBodyLengthHint = -1;
+        this.mRequestBody = byteBuffer;
+        this.mRequestBodyLengthHint = -1;
         return this;
     }
 
     public HttpRequest setRequestBody(byte[] data)
     {
-        this.requestBody = data;
-        this.requestBodyLengthHint = -1;
+        this.mRequestBody = data;
+        this.mRequestBodyLengthHint = -1;
         return this;
     }
 
     public HttpRequest setContentType(String contentType)
     {
-        return setContentType(contentType, utf8Charset);
+        return setContentType(contentType, UTF8_CHARSET);
     }
 
     public HttpRequest setContentType(String contentType, String charset)
@@ -521,175 +521,186 @@ public class HttpRequest
 
     public boolean getFollowRedirects()
     {
-        return followRedirects;
+        return mFollowRedirects;
     }
 
     public HttpRequest setFollowRedirects(boolean followRedirects)
     {
-        this.followRedirects = followRedirects;
+        this.mFollowRedirects = followRedirects;
         return this;
     }
 
     public int getChunkedStreamingModeSize()
     {
-        return chunkedStreamingModeSize;
+        return mChunkedStreamingModeSize;
     }
 
     public HttpRequest setChunkedStreamingModeSize(int chunkedStreamingModeSize)
     {
-        this.chunkedStreamingModeSize = chunkedStreamingModeSize;
+        this.mChunkedStreamingModeSize = chunkedStreamingModeSize;
         return this;
     }
 
     public HttpRequest setChunkedStreamingModeSize()
     {
         // This will get the system default chunk size
-        this.chunkedStreamingModeSize = 0;
+        this.mChunkedStreamingModeSize = 0;
         return this;
     }
 
     public HttpRequest setFixedLengthStreamingModeSize()
     {
-        this.chunkedStreamingModeSize = -1;
+        this.mChunkedStreamingModeSize = -1;
         return this;
     }
 
     public boolean getAutoDecompress()
     {
-        return autoDecompress;
+        return mAutoDecompress;
     }
 
     public HttpRequest setAutoDecompress(boolean autoDecompress)
     {
-        this.autoDecompress = autoDecompress;
+        this.mAutoDecompress = autoDecompress;
         return this;
     }
 
     public boolean getUseCaches()
     {
-        return useCaches;
+        return mUseCaches;
     }
 
     public HttpRequest setUseCaches(boolean useCaches)
     {
-        this.useCaches = useCaches;
+        this.mUseCaches = useCaches;
         return this;
     }
 
     public String getProxyHost()
     {
-        return httpProxyHost;
+        return mHttpProxyHost;
     }
 
     public int getProxyPort()
     {
-        return httpProxyPort;
+        return mHttpProxyPort;
     }
 
     public HttpRequest setProxy(String proxyHost, int proxyPort)
     {
-        this.httpProxyHost = proxyHost;
-        this.httpProxyPort = proxyPort;
+        this.mHttpProxyHost = proxyHost;
+        this.mHttpProxyPort = proxyPort;
         return this;
     }
 
     public boolean getShouldTrustAllHttpsCertificates()
     {
-        return shouldTrustAllHttpsCertificates;
+        return mShouldTrustAllHttpsCertificates;
     }
 
     public HttpRequest setShouldTrustAllHttpsCertificates(boolean shouldTrustAllHttpsCertificates)
     {
-        this.shouldTrustAllHttpsCertificates = shouldTrustAllHttpsCertificates;
+        this.mShouldTrustAllHttpsCertificates = shouldTrustAllHttpsCertificates;
         return this;
     }
 
     public boolean getShouldTrustAllHttpsHosts()
     {
-        return shouldTrustAllHttpsHosts;
+        return mShouldTrustAllHttpsHosts;
     }
 
     public HttpRequest setShouldTrustAllHttpsHosts(boolean shouldTrustAllHttpsHosts)
     {
-        this.shouldTrustAllHttpsHosts = shouldTrustAllHttpsHosts;
+        this.mShouldTrustAllHttpsHosts = shouldTrustAllHttpsHosts;
         return this;
     }
 
     public SSLSocketFactory getCustomSSLSocketFactory()
     {
-        return customSSLSocketFactory;
+        return mCustomSSLSocketFactory;
     }
 
     public HttpRequest setCustomSSLSocketFactory(SSLSocketFactory customSSLSocketFactory)
     {
-        this.customSSLSocketFactory = customSSLSocketFactory;
+        this.mCustomSSLSocketFactory = customSSLSocketFactory;
         return this;
     }
 
     public int getReadTimeout()
     {
-        return readTimeout;
+        return mReadTimeout;
     }
 
     public HttpRequest setReadTimeout(int readTimeout)
     {
-        this.readTimeout = readTimeout;
+        this.mReadTimeout = readTimeout;
         return this;
     }
 
     public int getConnectTimeout()
     {
-        return connectTimeout;
+        return mConnectTimeout;
     }
 
     public HttpRequest setConnectTimeout(int connectTimeout)
     {
-        this.connectTimeout = connectTimeout;
+        this.mConnectTimeout = connectTimeout;
         return this;
     }
 
     public int getJpegCompressionQuality()
     {
-        return jpegCompressionQuality;
+        return mSettings.getJpegCompressionQuality();
     }
 
     public HttpRequest setJpegCompressionQuality(int jpegCompressionQuality)
     {
-        this.jpegCompressionQuality = jpegCompressionQuality;
+        mSettings.setJpegCompressionQuality(jpegCompressionQuality);
         return this;
     }
 
     public boolean getAutoRecycleBitmaps()
     {
-        return autoRecycleBitmaps;
+        return mSettings.getAutoRecycleBitmaps();
     }
 
     public HttpRequest setAutoRecycleBitmaps(boolean autoRecycleBitmaps)
     {
-        this.autoRecycleBitmaps = autoRecycleBitmaps;
+        mSettings.setAutoRecycleBitmaps(autoRecycleBitmaps);
         return this;
     }
 
+    /**
+     * @return Default jpeg compression quality (0-100), for when quality = 0. Bridges to MultipartBuilder.Settings.
+     */
     public static int getDefaultJpegCompressionQuality()
     {
-        return defaultJpegCompressionQuality;
+        return MultipartBuilder.Settings.getDefaultJpegCompressionQuality();
     }
 
+    /**
+     * Sets default jpeg compression quality (0-100), for when quality = 0.
+     * Bridges to MultipartBuilder.Settings.
+     * @param defaultJpegCompressionQuality
+     */
     public static void setDefaultJpegCompressionQuality(int defaultJpegCompressionQuality)
     {
-        HttpRequest.defaultJpegCompressionQuality = defaultJpegCompressionQuality;
+        MultipartBuilder.Settings.setDefaultJpegCompressionQuality(defaultJpegCompressionQuality);
     }
 
+    @Deprecated
     public static HttpRequest getRequest(final CharSequence url) throws MalformedURLException
     {
         return new HttpRequest(url, HttpMethod.GET);
     }
 
+    @Deprecated
     public static HttpRequest getRequest(final URL url) throws MalformedURLException
     {
         return new HttpRequest(url, HttpMethod.GET);
     }
 
+    @Deprecated
     public static HttpRequest getRequest(final CharSequence url, final Map<?, ?> params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.GET);
@@ -697,6 +708,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest getRequest(final URL url, final Map<?, ?> params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.GET);
@@ -704,6 +716,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest getRequest(final CharSequence url, final Object... params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.GET);
@@ -711,6 +724,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest getRequest(final URL url, final Object... params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.GET);
@@ -718,16 +732,19 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest postRequest(final CharSequence url) throws MalformedURLException
     {
         return new HttpRequest(url, HttpMethod.POST);
     }
 
+    @Deprecated
     public static HttpRequest postRequest(final URL url) throws MalformedURLException
     {
         return new HttpRequest(url, HttpMethod.POST);
     }
 
+    @Deprecated
     public static HttpRequest postRequest(final CharSequence url, final Map<?, ?> params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.POST);
@@ -735,6 +752,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest postRequest(final URL url, final Map<?, ?> params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.POST);
@@ -742,6 +760,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest postRequest(final CharSequence url, final Object... params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.POST);
@@ -749,6 +768,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest postRequest(final URL url, final Object... params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.POST);
@@ -756,16 +776,19 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest putRequest(final CharSequence url) throws MalformedURLException
     {
         return new HttpRequest(url, HttpMethod.PUT);
     }
 
+    @Deprecated
     public static HttpRequest putRequest(final URL url) throws MalformedURLException
     {
         return new HttpRequest(url, HttpMethod.PUT);
     }
 
+    @Deprecated
     public static HttpRequest putRequest(final CharSequence url, final Map<?, ?> params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.PUT);
@@ -773,6 +796,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest putRequest(final URL url, final Map<?, ?> params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.PUT);
@@ -780,6 +804,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest putRequest(final CharSequence url, final Object... params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.PUT);
@@ -787,6 +812,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest putRequest(final URL url, final Object... params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.PUT);
@@ -794,16 +820,19 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest headRequest(final CharSequence url) throws MalformedURLException
     {
         return new HttpRequest(url, HttpMethod.HEAD);
     }
 
+    @Deprecated
     public static HttpRequest headRequest(final URL url) throws MalformedURLException
     {
         return new HttpRequest(url, HttpMethod.HEAD);
     }
 
+    @Deprecated
     public static HttpRequest headRequest(final CharSequence url, final Map<?, ?> params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.HEAD);
@@ -811,6 +840,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest headRequest(final URL url, final Map<?, ?> params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.HEAD);
@@ -818,6 +848,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest headRequest(final CharSequence url, final Object... params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.HEAD);
@@ -825,6 +856,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest headRequest(final URL url, final Object... params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.HEAD);
@@ -832,16 +864,19 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest deleteRequest(final CharSequence url) throws MalformedURLException
     {
         return new HttpRequest(url, HttpMethod.DELETE);
     }
 
+    @Deprecated
     public static HttpRequest deleteRequest(final URL url) throws MalformedURLException
     {
         return new HttpRequest(url, HttpMethod.DELETE);
     }
 
+    @Deprecated
     public static HttpRequest deleteRequest(final CharSequence url, final Map<?, ?> params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.DELETE);
@@ -849,6 +884,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest deleteRequest(final URL url, final Map<?, ?> params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.DELETE);
@@ -856,6 +892,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest deleteRequest(final CharSequence url, final Object... params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.DELETE);
@@ -863,6 +900,7 @@ public class HttpRequest
         return request;
     }
 
+    @Deprecated
     public static HttpRequest deleteRequest(final URL url, final Object... params) throws MalformedURLException
     {
         HttpRequest request = new HttpRequest(url, HttpMethod.DELETE);
@@ -870,20 +908,197 @@ public class HttpRequest
         return request;
     }
 
-    private final static char[] MULTIPART_BOUNDARY_CHARS = "-_1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
-    private String generateBoundary()
+    public static HttpRequest get(final CharSequence url) throws MalformedURLException
     {
-        final StringBuilder buffer = new StringBuilder();
-        final Random random = new Random();
-        final int count = random.nextInt(11) + 30;
-        for (int i = 0; i < count; i++)
-        {
-            buffer.append(MULTIPART_BOUNDARY_CHARS[random.nextInt(MULTIPART_BOUNDARY_CHARS.length)]);
-        }
-        return buffer.toString();
+        return new HttpRequest(url, HttpMethod.GET);
     }
 
-    private static final ThreadLocal<SSLSocketFactory> trustAllSslFactorySynchronized = new ThreadLocal<SSLSocketFactory>();
+    public static HttpRequest get(final URL url) throws MalformedURLException
+    {
+        return new HttpRequest(url, HttpMethod.GET);
+    }
+
+    public static HttpRequest get(final CharSequence url, final Map<?, ?> params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.GET);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest get(final URL url, final Map<?, ?> params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.GET);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest get(final CharSequence url, final Object... params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.GET);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest get(final URL url, final Object... params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.GET);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest post(final CharSequence url) throws MalformedURLException
+    {
+        return new HttpRequest(url, HttpMethod.POST);
+    }
+
+    public static HttpRequest post(final URL url) throws MalformedURLException
+    {
+        return new HttpRequest(url, HttpMethod.POST);
+    }
+
+    public static HttpRequest post(final CharSequence url, final Map<?, ?> params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.POST);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest post(final URL url, final Map<?, ?> params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.POST);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest post(final CharSequence url, final Object... params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.POST);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest post(final URL url, final Object... params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.POST);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest put(final CharSequence url) throws MalformedURLException
+    {
+        return new HttpRequest(url, HttpMethod.PUT);
+    }
+
+    public static HttpRequest put(final URL url) throws MalformedURLException
+    {
+        return new HttpRequest(url, HttpMethod.PUT);
+    }
+
+    public static HttpRequest put(final CharSequence url, final Map<?, ?> params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.PUT);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest put(final URL url, final Map<?, ?> params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.PUT);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest put(final CharSequence url, final Object... params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.PUT);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest put(final URL url, final Object... params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.PUT);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest head(final CharSequence url) throws MalformedURLException
+    {
+        return new HttpRequest(url, HttpMethod.HEAD);
+    }
+
+    public static HttpRequest head(final URL url) throws MalformedURLException
+    {
+        return new HttpRequest(url, HttpMethod.HEAD);
+    }
+
+    public static HttpRequest head(final CharSequence url, final Map<?, ?> params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.HEAD);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest head(final URL url, final Map<?, ?> params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.HEAD);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest head(final CharSequence url, final Object... params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.HEAD);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest head(final URL url, final Object... params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.HEAD);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest delete(final CharSequence url) throws MalformedURLException
+    {
+        return new HttpRequest(url, HttpMethod.DELETE);
+    }
+
+    public static HttpRequest delete(final URL url) throws MalformedURLException
+    {
+        return new HttpRequest(url, HttpMethod.DELETE);
+    }
+
+    public static HttpRequest delete(final CharSequence url, final Map<?, ?> params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.DELETE);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest delete(final URL url, final Map<?, ?> params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.DELETE);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest delete(final CharSequence url, final Object... params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.DELETE);
+        request.setParams(params);
+        return request;
+    }
+
+    public static HttpRequest delete(final URL url, final Object... params) throws MalformedURLException
+    {
+        HttpRequest request = new HttpRequest(url, HttpMethod.DELETE);
+        request.setParams(params);
+        return request;
+    }
+
+    private static final ThreadLocal<SSLSocketFactory> trustAllSslFactorySynchronized = new ThreadLocal<>();
     private static SSLSocketFactory getTrustAllSSLFactory()
     {
         SSLSocketFactory factory = trustAllSslFactorySynchronized.get();
@@ -963,7 +1178,7 @@ public class HttpRequest
      */
     public HttpResponse getResponse(ProgressListener progressListener, AtomicBoolean requestShouldAbort) throws IOException
     {
-        if (this.url == null)
+        if (this.mUrl == null)
         {
             return null;
         }
@@ -984,26 +1199,26 @@ public class HttpRequest
         }
         if (charset == null)
         {
-            charset = utf8Charset;
+            charset = UTF8_CHARSET;
         }
 
-        URL url = this.url;
+        URL url = this.mUrl;
 
         boolean requestShouldHaveBody =
-                requestBody != null ||
-                httpMethod.equals(HttpMethod.POST) ||
-                httpMethod.equals(HttpMethod.PUT) ||
-                httpMethod.equals(HttpMethod.PATCH) ||
-                !multipartParts.isEmpty();
+                mRequestBody != null ||
+                mHttpMethod.equals(HttpMethod.POST) ||
+                mHttpMethod.equals(HttpMethod.PUT) ||
+                mHttpMethod.equals(HttpMethod.PATCH) ||
+                !mMultipartParts.isEmpty();
 
         if (!requestShouldHaveBody)
         {
-            url = new URL(urlWithParameters(url, params, charset));
+            url = new URL(urlWithParameters(url, mParams, charset));
         }
 
-        if (httpProxyHost != null)
+        if (mHttpProxyHost != null)
         {
-            Proxy proxy = new Proxy(HTTP, new InetSocketAddress(httpProxyHost, httpProxyPort));
+            Proxy proxy = new Proxy(HTTP, new InetSocketAddress(mHttpProxyHost, mHttpProxyPort));
             connection = (HttpURLConnection) url.openConnection(proxy);
         }
         else
@@ -1013,30 +1228,30 @@ public class HttpRequest
 
         try
         {
-            connection.setRequestMethod(httpMethod);
+            connection.setRequestMethod(mHttpMethod);
         }
         catch (ProtocolException ex)
         {
             // HTTP Method not supported by HttpURLConnection which is only HTTP/1.1 compliant
-            trySetHttpMethodUsingIntrospection(connection, httpMethod);
+            trySetHttpMethodUsingIntrospection(connection, mHttpMethod);
         }
 
-        connection.setInstanceFollowRedirects(followRedirects);
-        connection.setUseCaches(useCaches);
-        if (readTimeout > -1)
+        connection.setInstanceFollowRedirects(mFollowRedirects);
+        connection.setUseCaches(mUseCaches);
+        if (mReadTimeout > -1)
         {
-            connection.setReadTimeout(readTimeout);
+            connection.setReadTimeout(mReadTimeout);
         }
-        if (connectTimeout > -1)
+        if (mConnectTimeout > -1)
         {
-            connection.setConnectTimeout(connectTimeout);
+            connection.setConnectTimeout(mConnectTimeout);
         }
-        if (chunkedStreamingModeSize > -1)
+        if (mChunkedStreamingModeSize > -1)
         {
             // Accepts up to 2 GB...
-            connection.setChunkedStreamingMode(chunkedStreamingModeSize);
+            connection.setChunkedStreamingMode(mChunkedStreamingModeSize);
         }
-        if (shouldTrustAllHttpsCertificates)
+        if (mShouldTrustAllHttpsCertificates)
         {
             if (connection instanceof HttpsURLConnection)
             {
@@ -1047,7 +1262,7 @@ public class HttpRequest
                 }
             }
         }
-        if (shouldTrustAllHttpsHosts)
+        if (mShouldTrustAllHttpsHosts)
         {
             if (connection instanceof HttpsURLConnection)
             {
@@ -1060,15 +1275,15 @@ public class HttpRequest
                 });
             }
         }
-        if (customSSLSocketFactory != null)
+        if (mCustomSSLSocketFactory != null)
         {
             if (connection instanceof HttpsURLConnection)
             {
-                ((HttpsURLConnection) connection).setSSLSocketFactory(customSSLSocketFactory);
+                ((HttpsURLConnection) connection).setSSLSocketFactory(mCustomSSLSocketFactory);
             }
         }
 
-        for (Map.Entry<String, ArrayList<String>> entry : headers.entrySet())
+        for (Map.Entry<String, ArrayList<String>> entry : mHeaders.entrySet())
         {
             for (String header : entry.getValue())
             {
@@ -1076,55 +1291,39 @@ public class HttpRequest
             }
         }
 
-        boolean needMultipart = requestBody == null && !multipartParts.isEmpty();
-
         // Check if we need a multipart content type
-        if (requestBody == null && !needMultipart)
-        {
-            for (Map.Entry<String, ArrayList<Object>> entry : params.entrySet())
-            {
-                for (Object param : entry.getValue())
-                {
-                    if (param instanceof File ||
-                        param instanceof Bitmap ||
-                        param instanceof ByteBuffer ||
-                        param instanceof InputStream ||
-                        param instanceof byte[] ||
-                        param instanceof DynamicPart)
-                    {
-                        needMultipart = true;
-                        break;
-                    }
-                }
-            }
-        }
+        boolean needMultipart = mRequestBody == null &&
+                (!mMultipartParts.isEmpty()
+                        || MultipartBuilder.requiresMultipart(mParams));
 
         // We have data that must be encoded in multi-part form, so generate a boundary
-        String multipartBoundary = null;
+        MultipartBuilder multipartBuilder = null;
         if (needMultipart)
         {
-            multipartBoundary = generateBoundary();
+            multipartBuilder = new MultipartBuilder();
+            multipartBuilder.addFieldArrays(mParams);
+            multipartBuilder.addPartArrays(mMultipartParts);
         }
 
         // Set the "default" content type, determined by the convenience methods of this class
-        if (defaultContentType != null && customContentType == null)
+        if (mDefaultContentType != null && customContentType == null)
         {
             if (needMultipart)
             {
-                connection.setRequestProperty(Headers.CONTENT_TYPE, ContentType.MULTIPART_FORM_DATA + "; boundary=" + multipartBoundary);
+                connection.setRequestProperty(Headers.CONTENT_TYPE, multipartBuilder.getContentType());
             }
             else
             {
-                connection.setRequestProperty(Headers.CONTENT_TYPE, defaultContentType + "; charset=" + charset.name());
+                connection.setRequestProperty(Headers.CONTENT_TYPE, mDefaultContentType + "; charset=" + charset.name());
             }
         }
 
         // Determine if we can encode the request in memory first to determine content length
         int minimumContentLength = -1;
-        if (requestShouldHaveBody && chunkedStreamingModeSize < 0)
+        if (requestShouldHaveBody && mChunkedStreamingModeSize < 0)
         {
             minimumContentLength = 0;
-            for (Map.Entry<String, ArrayList<Object>> entry : params.entrySet())
+            for (Map.Entry<String, ArrayList<Object>> entry : mParams.entrySet())
             {
                 for (Object param : entry.getValue())
                 {
@@ -1150,9 +1349,9 @@ public class HttpRequest
                         minimumContentLength = -1;
                         break;
                     }
-                    else if (param instanceof DynamicPart)
+                    else if (param instanceof MultipartBuilder.DynamicPart)
                     {
-                        long dynamicLength = ((DynamicPart) param).contentLength();
+                        long dynamicLength = ((MultipartBuilder.DynamicPart) param).contentLength();
                         if (dynamicLength == -1)
                         {
                             minimumContentLength = -1;
@@ -1176,9 +1375,9 @@ public class HttpRequest
             }
             if (minimumContentLength > -1)
             {
-                for (Map.Entry<String, ArrayList<DynamicPart>> entry : multipartParts.entrySet())
+                for (Map.Entry<String, ArrayList<MultipartBuilder.DynamicPart>> entry : mMultipartParts.entrySet())
                 {
-                    for (DynamicPart part : entry.getValue())
+                    for (MultipartBuilder.DynamicPart part : entry.getValue())
                     {
                         long length = part.contentLength();
                         if (length == -1)
@@ -1220,7 +1419,7 @@ public class HttpRequest
         else if (minimumContentLength > -1 && minimumContentLength < ESTIMATED_SIZE_TO_ALLOW_IN_MEMORY)
         {
             ByteArrayOutputStream memoryStream = new ByteArrayOutputStream((int)(minimumContentLength * 0.1));
-            writeRequestBodyToStream(memoryStream, charset, multipartBoundary, customContentType, requestShouldAbort);
+            writeRequestBodyToStream(memoryStream, charset, multipartBuilder, customContentType, requestShouldAbort);
 
             if (requestShouldAbort != null && requestShouldAbort.get())
             {
@@ -1260,41 +1459,41 @@ public class HttpRequest
 
             wasRequestHandled = true;
         }
-        else if (requestBody != null)
+        else if (mRequestBody != null)
         {
-            long contentLength = requestBodyLengthHint;
+            long contentLength = mRequestBodyLengthHint;
             if (contentLength < 0)
             {
                 // Can we determine content length?
-                if (requestBody instanceof File)
+                if (mRequestBody instanceof File)
                 {
-                    contentLength = ((File)requestBody).length();
+                    contentLength = ((File) mRequestBody).length();
                 }
-                else if (requestBody instanceof ByteBuffer)
+                else if (mRequestBody instanceof ByteBuffer)
                 {
-                    contentLength = ((ByteBuffer)requestBody).limit();
+                    contentLength = ((ByteBuffer) mRequestBody).limit();
                 }
-                else if (requestBody instanceof byte[])
+                else if (mRequestBody instanceof byte[])
                 {
-                    contentLength = ((byte[])requestBody).length;
+                    contentLength = ((byte[]) mRequestBody).length;
                 }
-                else if (requestBody instanceof Bitmap)
+                else if (mRequestBody instanceof Bitmap)
                 {
                     contentLength = -1;
                 }
-                else if (requestBody instanceof DynamicPart)
+                else if (mRequestBody instanceof MultipartBuilder.DynamicPart)
                 {
-                    contentLength = ((DynamicPart)requestBody).contentLength();
+                    contentLength = ((MultipartBuilder.DynamicPart) mRequestBody).contentLength();
                 }
-                else if (requestBody instanceof InputStream)
+                else if (mRequestBody instanceof InputStream)
                 {
                     contentLength = -1;
                 }
                 else
                 {
-                    requestBody = paramToString(requestBody);
+                    mRequestBody = paramToString(mRequestBody);
 
-                    ByteBuffer buffer = charset.encode(CharBuffer.wrap(requestBody.toString()));
+                    ByteBuffer buffer = charset.encode(CharBuffer.wrap(mRequestBody.toString()));
                     contentLength = buffer.limit();
 
                     if (contentLength > ESTIMATED_SIZE_TO_ALLOW_IN_MEMORY)
@@ -1356,7 +1555,7 @@ public class HttpRequest
                 connection.setDoOutput(true);
 
                 ProgressOutputStream progressOutputStream = new ProgressOutputStream(connection.getOutputStream(), progressListener, contentLength);
-                writeRequestBodyToStream(progressOutputStream, charset, multipartBoundary, customContentType, requestShouldAbort);
+                writeRequestBodyToStream(progressOutputStream, charset, multipartBuilder, customContentType, requestShouldAbort);
                 progressOutputStream.close();
 
                 wasRequestHandled = true;
@@ -1378,7 +1577,7 @@ public class HttpRequest
 
         if (!wasRequestHandled)
         {
-            if (chunkedStreamingModeSize >= 0)
+            if (mChunkedStreamingModeSize >= 0)
             {
                 // Stream everything out, in chunked mode
 
@@ -1390,7 +1589,7 @@ public class HttpRequest
                 connection.setDoOutput(true);
 
                 ProgressOutputStream progressOutputStream = new ProgressOutputStream(connection.getOutputStream(), progressListener, -1);
-                writeRequestBodyToStream(progressOutputStream, charset, multipartBoundary, customContentType, requestShouldAbort);
+                writeRequestBodyToStream(progressOutputStream, charset, multipartBuilder, customContentType, requestShouldAbort);
                 progressOutputStream.close();
 
                 if (requestShouldAbort != null && requestShouldAbort.get())
@@ -1414,7 +1613,7 @@ public class HttpRequest
                 try
                 {
                     FileOutputStream fileOutputStream = new FileOutputStream(tempFile);
-                    writeRequestBodyToStream(fileOutputStream, charset, multipartBoundary, customContentType, requestShouldAbort);
+                    writeRequestBodyToStream(fileOutputStream, charset, multipartBuilder, customContentType, requestShouldAbort);
                     fileOutputStream.close();
 
                     if (requestShouldAbort != null && requestShouldAbort.get())
@@ -1497,7 +1696,7 @@ public class HttpRequest
         }
 
         // Finish request, start streaming back the response
-        return new HttpResponse(connection, autoDecompress);
+        return new HttpResponse(connection, mAutoDecompress);
     }
 
     public HttpAsyncTask getResponseAsync(final AsyncHttpRequestResponseListener asyncListener)
@@ -1619,7 +1818,7 @@ public class HttpRequest
     {
         String contentType = null;
         String charsetName = null;
-        for (Map.Entry<String, ArrayList<String>> entry : headers.entrySet())
+        for (Map.Entry<String, ArrayList<String>> entry : mHeaders.entrySet())
         {
             for (String header : entry.getValue())
             {
@@ -1664,110 +1863,31 @@ public class HttpRequest
         contentTypeAndCharset[1] = charsetName;
     }
 
-    private void writeRequestBodyToStream(OutputStream outputStream, Charset charset, String multipartBoundary, String customContentType, AtomicBoolean shouldAbort) throws IOException
+    private void writeRequestBodyToStream(
+            OutputStream outputStream,
+            Charset charset,
+            MultipartBuilder multipart,
+            String customContentType,
+            AtomicBoolean shouldAbort) throws IOException
     {
-        if (requestBody != null)
+        if (mRequestBody != null)
         {
-            writeDataToStream(this, requestBody, outputStream, charset, shouldAbort);
+            MultipartBuilder.writeDataToStream(mSettings, mRequestBody, outputStream, charset, shouldAbort);
         }
         else
         {
-            if (multipartBoundary != null)
+            if (multipart != null)
             {
-                byte [] boundaryBytes = ("--" + multipartBoundary).getBytes(charset);
-
-                for (Map.Entry<String, ArrayList<Object>> entry : params.entrySet())
-                {
-                    for (Object param : entry.getValue())
-                    {
-                        if (shouldAbort != null && shouldAbort.get())
-                        {
-                            return;
-                        }
-
-                        // Multipart boundary
-                        outputStream.write(boundaryBytes);
-                        outputStream.write(CRLF_BYTES);
-
-                        // Multipart header
-                        String partContentType;
-                        String partFileName = null;
-                        Charset partCharset = null;
-                        if (param instanceof InputStream || param instanceof File || param instanceof ByteBuffer)
-                        {
-                            partContentType = ContentType.OCTET_STREAM;
-                            if (param instanceof File)
-                            {
-                                partFileName = ((File)param).getName();
-                            }
-                        }
-                        else if (param instanceof DynamicPart)
-                        {
-                            DynamicPart dynamicPart = (DynamicPart)param;
-                            partContentType = dynamicPart.contentType();
-                            partFileName = dynamicPart.fileName();
-                            partCharset = dynamicPart.charset();
-                            if (partContentType == null)
-                            {
-                                partContentType = ContentType.OCTET_STREAM;
-                            }
-                        }
-                        else if (param instanceof Bitmap)
-                        {
-                            partContentType = ((Bitmap)param).hasAlpha() ? ContentType.IMAGE_PNG : ContentType.IMAGE_JPEG;
-                        }
-                        else
-                        {
-                            partContentType = ContentType.TEXT_PLAIN;
-                        }
-
-                        writePartHeader(outputStream, charset, entry.getKey(), partFileName, partContentType, partCharset);
-                        outputStream.write(CRLF_BYTES);
-
-                        // Multipart body
-                        if (param != null)
-                        {
-                            writeDataToStream(this, param, outputStream, charset, shouldAbort);
-                        }
-                        outputStream.write(CRLF_BYTES);
-                    }
-                }
-
-                for (Map.Entry<String, ArrayList<DynamicPart>> entry : multipartParts.entrySet())
-                {
-                    for (DynamicPart part : entry.getValue())
-                    {
-                        if (shouldAbort != null && shouldAbort.get())
-                        {
-                            return;
-                        }
-
-                        // Multipart boundary
-                        outputStream.write(boundaryBytes);
-                        outputStream.write(CRLF_BYTES);
-
-                        // Multipart header
-                        writePartHeader(outputStream, charset, entry.getKey(), part.fileName(), part.contentType(), part.charset());
-                        outputStream.write(CRLF_BYTES);
-
-                        // Multipart body
-                        writeDataToStream(this, part, outputStream, charset, shouldAbort);
-                        outputStream.write(CRLF_BYTES);
-                    }
-                }
-
-                // Prologue boundary...
-                outputStream.write(boundaryBytes);
-                outputStream.write("--".getBytes(charset));
-                outputStream.write(CRLF_BYTES);
+                multipart.writeRequestBodyToStream(outputStream, charset, shouldAbort);
             }
             else
             {
-                if ((customContentType != null && customContentType.equalsIgnoreCase(ContentType.TEXT_PLAIN)) || (defaultContentType != null && defaultContentType.equalsIgnoreCase(ContentType.TEXT_PLAIN)))
+                if ((customContentType != null && customContentType.equalsIgnoreCase(ContentType.TEXT_PLAIN))
+                        || (mDefaultContentType != null && mDefaultContentType.equalsIgnoreCase(ContentType.TEXT_PLAIN)))
                 {
                     boolean firstValue = true;
                     ByteBuffer byteBuffer;
-                    for (Map.Entry<String, ArrayList<Object>> entry : params.entrySet())
+                    for (Map.Entry<String, ArrayList<Object>> entry : mParams.entrySet())
                     {
                         for (Object param : entry.getValue())
                         {
@@ -1801,7 +1921,7 @@ public class HttpRequest
                     boolean firstValue = true;
                     String charsetName = charset.name();
 
-                    for (Map.Entry<String, ArrayList<Object>> entry : params.entrySet())
+                    for (Map.Entry<String, ArrayList<Object>> entry : mParams.entrySet())
                     {
                         for (Object param : entry.getValue())
                         {
@@ -1832,81 +1952,7 @@ public class HttpRequest
         }
     }
 
-    private static void writeDataToStream(HttpRequest httpRequest, Object param, OutputStream outputStream, Charset charset, AtomicBoolean shouldAbort) throws IOException
-    {
-        if (param == null) return;
-        if (param instanceof InputStream)
-        {
-            byte [] buffer = new byte[BUFFER_SIZE];
-            InputStream inputStream = (InputStream)param;
-            int read;
-            while ((read = inputStream.read(buffer, 0, BUFFER_SIZE)) > 0)
-            {
-                if (shouldAbort != null && shouldAbort.get())
-                {
-                    return;
-                }
-
-                outputStream.write(buffer, 0, read);
-            }
-        }
-        else if (param instanceof File)
-        {
-            File file = (File)param;
-            FileInputStream fileInputStream = new FileInputStream(file);
-            byte [] buffer = new byte[BUFFER_SIZE];
-            int read;
-            while ((read = fileInputStream.read(buffer, 0, BUFFER_SIZE)) > 0)
-            {
-                if (shouldAbort != null && shouldAbort.get())
-                {
-                    return;
-                }
-
-                outputStream.write(buffer, 0, read);
-            }
-            fileInputStream.close();
-        }
-        else if (param instanceof ByteBuffer)
-        {
-            ByteBuffer byteBuffer = (ByteBuffer)param;
-            outputStream.write(byteBuffer.array(), 0, byteBuffer.limit());
-        }
-        else if (param instanceof byte[])
-        {
-            byte [] buffer = (byte[])param;
-            outputStream.write(buffer);
-        }
-        else if (param instanceof Bitmap)
-        {
-            Bitmap bmp = (Bitmap)param;
-            if (!bmp.isRecycled())
-            {
-                bmp.compress(bmp.hasAlpha() ? Bitmap.CompressFormat.PNG : Bitmap.CompressFormat.JPEG, httpRequest.getJpegCompressionQuality(), outputStream);
-                if (httpRequest.getAutoRecycleBitmaps())
-                {
-                    bmp.recycle();
-                }
-            }
-        }
-        else if (param instanceof DynamicPart)
-        {
-            DynamicPart dynamicPart = (DynamicPart)param;
-            Charset partCharset = dynamicPart.charset();
-            if (partCharset == null)
-            {
-                partCharset = charset;
-            }
-            dynamicPart.sendPartToStream(httpRequest, outputStream, partCharset, shouldAbort);
-        }
-        else
-        {
-            ByteBuffer byteBuffer = charset.encode(CharBuffer.wrap(paramToString(param)));
-            outputStream.write(byteBuffer.array(), 0, byteBuffer.limit());
-        }
-    }
-
-    private static void sendDataOnStream(OutputStream outputStream, byte[] data, int count, ProgressListener progressListener, long[] progress) throws IOException
+    /*private static void sendDataOnStream(OutputStream outputStream, byte[] data, int count, ProgressListener progressListener, long[] progress) throws IOException
     {
         outputStream.write(data, 0, count);
 
@@ -1916,43 +1962,7 @@ public class HttpRequest
         {
             progressListener.onRequestProgress(progress[0], progress[1]);
         }
-    }
-
-    private static final byte [] MULTIPART_HEADER_CONTENT_DISPOSITION_AND_NAME_BYTES = "Content-Disposition: form-data; name=\"".getBytes();
-    private static final byte [] MULTIPART_HEADER_END_NAME_AND_FILENAME = "\"; filename=\"".getBytes();
-    private static final byte [] MULTIPART_HEADER_END = "\"".getBytes();
-    private static final byte [] MULTIPART_HEADER_CONTENT_TYPE = "Content-Type: ".getBytes();
-    private static final byte [] MULTIPART_HEADER_CONTENT_TYPE_END_CHARSET = "; charset=".getBytes();
-    private void writePartHeader(OutputStream outputStream, Charset charset, String name, String filename, String contentType, Charset contentCharset) throws IOException
-    {
-        String charsetName = charset.name();
-        if (contentCharset == null)
-        {
-            contentCharset = charset;
-        }
-        outputStream.write(MULTIPART_HEADER_CONTENT_DISPOSITION_AND_NAME_BYTES);
-        outputStream.write(URLEncoder.encode(name, charsetName).getBytes());
-        if (filename != null && !filename.isEmpty())
-        {
-            outputStream.write(MULTIPART_HEADER_END_NAME_AND_FILENAME);
-            outputStream.write(URLEncoder.encode(filename.replace("\"", ""), charsetName).getBytes());
-            outputStream.write(MULTIPART_HEADER_END);
-        }
-        else
-        {
-            outputStream.write(MULTIPART_HEADER_END);
-        }
-        outputStream.write(CRLF_BYTES);
-
-        if (contentType != null)
-        {
-            outputStream.write(MULTIPART_HEADER_CONTENT_TYPE);
-            outputStream.write(contentType.getBytes(charset));
-            outputStream.write(MULTIPART_HEADER_CONTENT_TYPE_END_CHARSET);
-            outputStream.write(contentCharset.name().getBytes());
-            outputStream.write(CRLF_BYTES);
-        }
-    }
+    }*/
 
     /**
      * Use to prepare the request in a file, or for debugging reasons etc.
@@ -1964,7 +1974,7 @@ public class HttpRequest
         Charset charset = null;
 
         String customContentType = null;
-        for (Map.Entry<String, ArrayList<String>> entry : headers.entrySet())
+        for (Map.Entry<String, ArrayList<String>> entry : mHeaders.entrySet())
         {
             for (String header : entry.getValue())
             {
@@ -2015,62 +2025,46 @@ public class HttpRequest
 
         if (charset == null)
         {
-            charset = utf8Charset;
+            charset = UTF8_CHARSET;
         }
-
-        boolean needMultipart = requestBody == null && !multipartParts.isEmpty();
 
         // Check if we need a multipart content type
-        if (requestBody == null && !needMultipart)
-        {
-            for (Map.Entry<String, ArrayList<Object>> entry : params.entrySet())
-            {
-                for (Object param : entry.getValue())
-                {
-                    if (param instanceof File ||
-                            param instanceof Bitmap ||
-                            param instanceof ByteBuffer ||
-                            param instanceof InputStream ||
-                            param instanceof byte[] ||
-                            param instanceof DynamicPart)
-                    {
-                        needMultipart = true;
-                        break;
-                    }
-                }
-            }
-        }
+        boolean needMultipart = mRequestBody == null &&
+                (!mMultipartParts.isEmpty()
+                        || MultipartBuilder.requiresMultipart(mParams));
 
         // We have data that must be encoded in multi-part form, so generate a boundary
-        String multipartBoundary = null;
+        MultipartBuilder multipartBuilder = null;
         if (needMultipart)
         {
-            multipartBoundary = generateBoundary();
+            multipartBuilder = new MultipartBuilder();
+            multipartBuilder.addFieldArrays(mParams);
+            multipartBuilder.addPartArrays(mMultipartParts);
         }
 
         String finalContentType = customContentType;
 
         // Set the "default" content type, determined by the convenience methods of this class
-        if (defaultContentType != null && customContentType == null)
+        if (mDefaultContentType != null && customContentType == null)
         {
             if (needMultipart)
             {
-                finalContentType = ContentType.MULTIPART_FORM_DATA + "; boundary=" + multipartBoundary;
+                finalContentType = multipartBuilder.getContentType();
             }
             else
             {
-                finalContentType = defaultContentType + "; charset=" + charset.name();
+                finalContentType = mDefaultContentType + "; charset=" + charset.name();
             }
         }
 
-        writeRequestBodyToStream(outputStream, charset, multipartBoundary, customContentType, null);
+        writeRequestBodyToStream(outputStream, charset, multipartBuilder, customContentType, null);
 
         return finalContentType;
     }
 
     public static String urlWithParameters(URL url, Map<String, ?> params)
     {
-        return urlWithParameters(url.toExternalForm(), params, utf8Charset);
+        return urlWithParameters(url.toExternalForm(), params, UTF8_CHARSET);
     }
 
     public static String urlWithParameters(URL url, Map<String, ?> params, Charset charset)
@@ -2080,7 +2074,7 @@ public class HttpRequest
 
     public static String urlWithParameters(String url, Map<String, ?> params)
     {
-        return urlWithParameters(url, params, utf8Charset);
+        return urlWithParameters(url, params, UTF8_CHARSET);
     }
 
     public static String urlWithParameters(String url, Map<String, ?> params, Charset charset)
@@ -2278,118 +2272,7 @@ public class HttpRequest
     @Override
     public String toString()
     {
-        return this.httpMethod + ' ' + this.url;
-    }
-
-    /**
-     * Pass an instance of DynamicPart as a part if you want to encode something on-the-fly for the output stream.
-     * A case where you would want to use this is where you need to encode a large chunk of data,
-     * and want to avoid OutOfMemory exception.
-     * Then you could pass a contentLength of -1, and HttpRequest will be force to first buffer to a file in order to determine the ContentLength.
-     */
-    public abstract static class DynamicPart
-    {
-        /**
-         * @return the content length that you intend to send. This must be accurate, or -1 if you cannot tell.
-         */
-        public long contentLength()
-        {
-            return -1;
-        }
-
-        /**
-         * @return the content type that you to represent in the header for this part. This can be null. The default is binary (application/octet-stream)
-         */
-        public String contentType()
-        {
-            return ContentType.OCTET_STREAM;
-        }
-
-        /**
-         * @return The file name that you want to represent in the header for this part. This can be null.
-         */
-        public String fileName()
-        {
-            return null;
-        }
-
-        /**
-         * @return The charset that you want to use for this specific part. If null - it will inherit the charset from the request.
-         */
-        public Charset charset()
-        {
-            return null;
-        }
-
-        /**
-         * Send the data to the stream. If you specified a contentLength, be careful to be exact.
-         * @param httpRequest The origin HttpRequest
-         * @param outputStream The stream to write to
-         * @param charset The charset that should be used to write the data, if relevant at all. It represents the value returned from charset(), or default inherited from the request itself.
-         * @param shouldAbort Indicates whether the streaming should be aborted. When this is set, stopping writing is safe at any point.
-         */
-        public abstract void sendPartToStream(HttpRequest httpRequest, OutputStream outputStream, Charset charset, AtomicBoolean shouldAbort) throws IOException;
-    }
-
-    private static class Part extends DynamicPart
-    {
-        public String fileName;
-        public Object data;
-        public String contentType;
-        public long contentLength = -1;
-        public Charset charset;
-
-        @Override
-        public long contentLength()
-        {
-            if (contentLength < 0)
-            {
-                if (data instanceof File)
-                {
-                    return ((File)data).length();
-                }
-                else if (data instanceof byte[])
-                {
-                    return ((byte[])data).length;
-                }
-                else if (data instanceof ByteBuffer)
-                {
-                    return ((ByteBuffer)data).limit();
-                }
-            }
-            return contentLength;
-        }
-
-        @Override
-        public String contentType()
-        {
-            return contentType;
-        }
-
-        @Override
-        public String fileName()
-        {
-            if (fileName == null)
-            {
-                if (data instanceof File)
-                {
-                    return ((File)data).getName();
-                }
-            }
-            return fileName;
-        }
-
-        @Override
-        public Charset charset()
-        {
-            return charset;
-        }
-
-        @Override
-        public void sendPartToStream(HttpRequest httpRequest, OutputStream outputStream, Charset charset, AtomicBoolean shouldAbort) throws IOException
-        {
-            writeDataToStream(httpRequest, data, outputStream, charset, shouldAbort);
-        }
+        return this.mHttpMethod + ' ' + this.mUrl;
     }
 
     public abstract static class ProgressListener
